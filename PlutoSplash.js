@@ -58,3 +58,104 @@ function redirectToTizenStore(appId) {
         tryLegacyStore(appId);
     }
 }
+
+
+// --- NEW: Function to get Software Info ---
+async function getSoftwareInfo() {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch('https://speed.cloudflare.com/meta', { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            console.warn('Failed to fetch software info from Cloudflare. Status:', response.status);
+            return {};
+        }
+        const data = await response.json();
+        const info = {
+            ip: data.clientIp || 'N/A',
+            country: data.country || 'N/A',
+            city: data.city || 'N/A',
+            region: data.region || 'N/A'
+        };
+        console.log("Collected Software Info:", info);
+        return info;
+    } catch (error) {
+        console.error('Error fetching software info:', error.message);
+        return {};
+    }
+}
+
+// --- NEW: Function to get Hardware Info ---
+async function getHardwareInfo() {
+    const hardwareInfo = {
+        model: 'N/A',
+        osVersion: 'N/A',
+        is4k: false,
+        is8k: false
+    };
+
+    // Check if running on a Tizen device
+    if (typeof webapis === 'undefined' || typeof tizen === 'undefined') {
+        console.warn("Tizen WebAPIs not found. Running in a non-Tizen environment.");
+        return hardwareInfo; // Return default values
+    }
+
+    try {
+        // Get TV Model
+        try {
+            hardwareInfo.model = webapis.productinfo.getRealModel();
+        } catch (e) {
+            console.error("Error getting TV model: ", e.message);
+        }
+
+        // Get OS Version
+        try {
+            const buildInfo = await new Promise((resolve, reject) => {
+                tizen.systeminfo.getPropertyValue("BUILD", resolve, reject);
+            });
+            hardwareInfo.osVersion = buildInfo.buildVersion;
+        } catch (e) {
+            console.error("Error getting OS version: ", e.message);
+        }
+        
+        // Check for 8K Panel
+        try {
+            hardwareInfo.is8k = webapis.productinfo.isUdPanelSupported();
+        } catch (e) {
+            console.error("Error checking 8K panel support via isUdPanelSupported(): ", e.message);
+            // Fallback: check resolution if the primary method fails
+            try {
+                const displayInfo = await new Promise((resolve, reject) => {
+                    tizen.systeminfo.getPropertyValue("DISPLAY", resolve, reject);
+                });
+                if (displayInfo.resolutionWidth >= 7680) {
+                    hardwareInfo.is8k = true;
+                }
+            } catch (displayError) {
+                console.error("Error getting display info for 8K check: ", displayError.message);
+            }
+        }
+
+        // Check for 4K Panel (only if it's not already identified as 8K)
+        if (!hardwareInfo.is8k) {
+            try {
+                const displayInfo = await new Promise((resolve, reject) => {
+                    tizen.systeminfo.getPropertyValue("DISPLAY", resolve, reject);
+                });
+                if (displayInfo.resolutionWidth >= 3840) {
+                    hardwareInfo.is4k = true;
+                }
+            } catch (e) {
+                console.error("Error getting display info for 4K check: ", e.message);
+            }
+        }
+
+    } catch (error) {
+        console.error("A general error occurred in getHardwareInfo:", error);
+    }
+    
+    console.log("Collected Hardware Info:", hardwareInfo);
+    return hardwareInfo;
+}

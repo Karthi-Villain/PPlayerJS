@@ -159,3 +159,38 @@ async function getHardwareInfo() {
     console.log("Collected Hardware Info:", hardwareInfo);
     return hardwareInfo;
 }
+
+async function fetchDeviceLocation() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout for location
+    try {
+        const response = await fetch('https://ipapi.co/json/', {
+            method: 'GET',
+            cache: 'no-cache',
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log("Fetched device location:", data.city, data.country_name);
+            return {
+                ip: data.ip,
+                city: data.city,
+                region_code: data.region_code,
+                country_code: data.country_code,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                timezone: data.timezone,
+            };
+        } else {
+            console.warn(`Location fetch failed: Status ${response.status}`);
+            return null;
+        }
+    } catch (error) {
+        clearTimeout(timeout);
+        console.warn("Location fetch failed due to network error or timeout:", error.message);
+        return null;
+    }
+}
+
